@@ -619,15 +619,21 @@ async function validateToken(raw) {
   const [code, subject, tsStr, nonce] = parts;
   const ts = parseInt(tsStr);
   if (isNaN(ts)) return null;
+
   const scannedWindow = Math.floor(ts / WINDOW_MS);
   const now = currentWindow();
-  if (scannedWindow < now - 1 || scannedWindow > now) return null; // expired or future
+
+  // Security Check: Token must be from the current or previous 10s window
+  if (scannedWindow < now - 1 || scannedWindow > now) return null; 
+
   const expectedHash = await sha256hex(`${code}:${scannedWindow}:attendio_salt_v1`);
   const expectedNonce = expectedHash.slice(0, 16);
+  
   if (nonce !== expectedNonce) return null;
+
+  // Return the data found INSIDE the QR code
   return { code, subject };
 }
-
 // ═══════════════════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════════════════
@@ -845,38 +851,34 @@ async function processStudentScan(raw) {
 
   const validated = await validateToken(raw);
   if (!validated) {
-    showResult('error', '⏱️', 'QR Code Expired', 'This QR code is no longer valid. Ask your teacher to show the screen again — it refreshes every 10 seconds.', 'error');
+    showResult('error', '⏱️', 'QR Code Expired', 'This QR code is no longer valid. Ask your teacher to refresh the screen.', 'error');
     return;
   }
 
-  // Find session via BroadcastChannel or localStorage
-  const stored = localStorage.getItem(`attendio_session_${validated.code}`);
-  if (!stored) {
-    showResult('error', '🔍', 'Session not found', `No active session found for code "${validated.code}". Make sure you are connected to the same device or network as the teacher.`, 'error');
-    return;
+  // HYBRID FIX: If the session doesn't exist locally, "create" it from the QR data
+  const sessionKey = `attendio_session_${validated.code}`;
+  if (!localStorage.getItem(sessionKey)) {
+    localStorage.setItem(sessionKey, JSON.stringify({ 
+      subject: validated.subject, 
+      teacher: "Verified Session" 
+    }));
   }
 
-  const sessionData = JSON.parse(stored);
   const alreadyKey = `attendio_mark_${validated.code}_${name.toLowerCase()}`;
   if (localStorage.getItem(alreadyKey)) {
-    showResult('warning', '⚠️', 'Already marked', `${name}, your attendance for "${sessionData.subject}" was already recorded.`, 'warning');
+    showResult('warning', '⚠️', 'Already marked', `${name}, your attendance for "${validated.subject}" was already recorded.`, 'warning');
     return;
   }
 
-  // Mark
+  // Mark Attendance locally on student's phone
   const record = { name, id: sid, time: new Date().toLocaleTimeString() };
-  const records = JSON.parse(localStorage.getItem(`attendio_records_${validated.code}`) || '[]');
+  const recordsKey = `attendio_records_${validated.code}`;
+  const records = JSON.parse(localStorage.getItem(recordsKey) || '[]');
   records.push(record);
-  localStorage.setItem(`attendio_records_${validated.code}`, JSON.stringify(records));
+  localStorage.setItem(recordsKey, JSON.stringify(records));
   localStorage.setItem(alreadyKey, '1');
 
-  // Update teacher view if same browser
-  if (session && session.code === validated.code) {
-    attendance = records;
-    updateAttendanceTable();
-  }
-
-  showResult('success', '✅', 'Attendance Marked!', `Hi ${name}! Your attendance for "${sessionData.subject}" (${sessionData.teacher}) has been successfully recorded.`, 'success');
+  showResult('success', '✅', 'Attendance Marked!', `Hi ${name}! Your attendance for "${validated.subject}" has been successfully recorded on your device.`, 'success');
 }
 
 function showResult(type, icon, title, body, btnClass) {
