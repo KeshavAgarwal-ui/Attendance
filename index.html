@@ -6,7 +6,7 @@
 <title>AttendIO — QR Attendance</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -776,34 +776,23 @@ function closeFullscreen() { document.getElementById('fullscreen-qr').classList.
 // ═══════════════════════════════════════════════════════
 async function startCamera() {
   try {
-    // Check if the API exists first
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("Camera API not supported or not in a secure (HTTPS) context");
-    }
-
-    videoStream = await navigator.mediaDevices.getUserMedia({ 
-      video: { 
-        facingMode: 'environment',
-        width: { ideal: 1280 },
-        height: { ideal: 720 } 
-      } 
-    });
-    
     const video = document.getElementById('scan-video');
+    videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
     video.srcObject = videoStream;
     
-    // Some browsers return a promise on play()
+    // Explicitly wait for the video to be ready
     await video.play();
     
+    // If we get here, camera is definitely working
     scanActive = true;
     scanLoop();
   } catch(e) {
-    console.error("Camera Error: ", e);
-    document.getElementById('scanner-card').innerHTML =
-      `<div style="padding:2rem;text-align:center;color:var(--red)">
-        <div style="font-size:2rem;margin-bottom:.5rem">📷</div>
-        ${e.message}<br>
-        Please ensure you are using <b>HTTPS</b>.
+    console.error("Camera Init Error:", e);
+    // This only shows if the camera hardware fails
+    document.getElementById('scanner-card').innerHTML = `
+      <div style="padding:2rem;text-align:center;color:var(--red)">
+        <div style="font-size:2rem;margin-bottom:.5rem">❌</div>
+        Camera could not start. Error: ${e.name}
       </div>`;
   }
 }
@@ -816,6 +805,14 @@ function stopCamera() {
 
 function scanLoop() {
   if (!scanActive) return;
+  
+  // Check if library is actually loaded
+  if (typeof jsQR === 'undefined') {
+    console.warn("jsQR library still loading...");
+    scanAnimFrame = requestAnimationFrame(scanLoop);
+    return;
+  }
+
   const video = document.getElementById('scan-video');
   if (video.readyState === video.HAVE_ENOUGH_DATA) {
     const canvas = document.getElementById('scan-canvas');
@@ -824,7 +821,10 @@ function scanLoop() {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // This is where it was crashing:
     const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
+    
     if (code && code.data) {
       scanActive = false;
       processStudentScan(code.data);
