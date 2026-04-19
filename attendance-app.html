@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AttendIO — QR Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c14;
+    --bg2: #111420;
+    --bg3: #181c2e;
+    --surface: #1e2238;
+    --surface2: #252a42;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --primary: #4f7cff;
+    --primary-dim: rgba(79,124,255,0.15);
+    --primary-glow: rgba(79,124,255,0.3);
+    --green: #2dd4a0;
+    --green-dim: rgba(45,212,160,0.12);
+    --red: #ff5c6c;
+    --red-dim: rgba(255,92,108,0.12);
+    --amber: #f5a623;
+    --amber-dim: rgba(245,166,35,0.12);
+    --text: #e8eaf6;
+    --text2: #8b90b0;
+    --text3: #555a7a;
+    --font: 'Sora', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 12px;
+    --radius-lg: 18px;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.6; overflow-x: hidden; }
+
+  /* ── LANDING ─────────────────────────────────────────────────────── */
+  #landing {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bg-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(79,124,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79,124,255,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 100%);
+  }
+
+  .orb {
+    position: absolute; border-radius: 50%; filter: blur(90px); pointer-events: none;
+  }
+  .orb-1 { width: 500px; height: 500px; background: rgba(79,124,255,0.08); top: -150px; left: -100px; }
+  .orb-2 { width: 400px; height: 400px; background: rgba(45,212,160,0.06); bottom: -100px; right: -50px; }
+
+  .logo-mark {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 3rem;
+    font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--text2); font-family: var(--mono);
+  }
+  .logo-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--primary); display: grid; place-items: center;
+    font-size: 16px;
+  }
+
+  .landing-title {
+    font-size: clamp(2.4rem, 6vw, 4.2rem);
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 1rem;
+    background: linear-gradient(135deg, #fff 30%, #8b90b0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .landing-sub {
+    color: var(--text2); text-align: center; font-size: 1.05rem;
+    max-width: 420px; margin-bottom: 3.5rem; font-weight: 300;
+  }
+
+  .role-cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    width: 100%; max-width: 520px;
+  }
+
+  .role-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 2rem 1.5rem;
+    cursor: pointer;
+    transition: border-color .2s, transform .2s, background .2s;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .role-card::before {
+    content: ''; position: absolute; inset: 0; opacity: 0;
+    transition: opacity .2s;
+  }
+  .role-card.teacher::before { background: radial-gradient(ellipse at 50% 0%, rgba(79,124,255,0.12) 0%, transparent 70%); }
+  .role-card.student::before { background: radial-gradient(ellipse at 50% 0%, rgba(45,212,160,0.1) 0%, transparent 70%); }
+  .role-card:hover { transform: translateY(-3px); border-color: var(--border2); }
+  .role-card:hover::before { opacity: 1; }
+  .role-card:active { transform: translateY(-1px); }
+
+  .role-icon { font-size: 2.4rem; margin-bottom: .8rem; display: block; }
+  .role-label { font-size: 1.1rem; font-weight: 600; margin-bottom: .3rem; }
+  .role-desc { font-size: 12px; color: var(--text2); font-weight: 300; }
+  .role-card.teacher .role-label { color: var(--primary); }
+  .role-card.student .role-label { color: var(--green); }
+
+  /* ── SHARED APP SHELL ────────────────────────────────────────────── */
+  .app-shell { display: none; min-height: 100vh; flex-direction: column; }
+  .app-shell.active { display: flex; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    position: sticky; top: 0; z-index: 100;
+    flex-shrink: 0;
+  }
+  .topbar-logo { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; color: var(--text2); }
+  .topbar-sep { width: 1px; height: 18px; background: var(--border2); }
+  .topbar-title { font-size: 14px; font-weight: 500; color: var(--text); flex: 1; }
+  .topbar-badge {
+    font-size: 11px; font-family: var(--mono); padding: 3px 10px;
+    border-radius: 999px; letter-spacing: .05em;
+  }
+  .badge-teacher { background: var(--primary-dim); color: var(--primary); border: 1px solid rgba(79,124,255,0.25); }
+  .badge-student { background: var(--green-dim); color: var(--green); border: 1px solid rgba(45,212,160,0.25); }
+
+  .back-btn {
+    background: none; border: 1px solid var(--border2); color: var(--text2);
+    padding: 5px 12px; border-radius: 8px; font-size: 12px;
+    cursor: pointer; font-family: var(--font); transition: all .15s;
+  }
+  .back-btn:hover { border-color: var(--border2); color: var(--text); background: var(--surface); }
+
+  .content { flex: 1; padding: 24px 20px; max-width: 760px; margin: 0 auto; width: 100%; }
+
+  /* ── TEACHER ─────────────────────────────────────────────────────── */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .setup-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 2rem;
+    margin-bottom: 20px;
+  }
+  .setup-card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 1.5rem; }
+
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; letter-spacing: .04em; text-transform: uppercase; font-family: var(--mono); }
+  .field input {
+    width: 100%; padding: 10px 14px;
+    background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 14px;
+    outline: none; transition: border-color .15s;
+  }
+  .field input:focus { border-color: var(--primary); }
+  .field input::placeholder { color: var(--text3); }
+
+  .btn-primary {
+    width: 100%; padding: 12px; border-radius: var(--radius);
+    background: var(--primary); border: none; color: #fff;
+    font-family: var(--font); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s, transform .1s;
+    letter-spacing: .02em;
+  }
+  .btn-primary:hover { opacity: .9; }
+  .btn-primary:active { transform: scale(.99); }
+  .btn-primary.green { background: var(--green); color: #0a1a15; }
+  .btn-outline {
+    width: 100%; padding: 11px; border-radius: var(--radius);
+    background: transparent; border: 1px solid var(--border2); color: var(--text2);
+    font-family: var(--font); font-size: 13px; cursor: pointer;
+    transition: all .15s; margin-top: 10px;
+  }
+  .btn-outline:hover { border-color: var(--red); color: var(--red); }
+
+  /* QR Section */
+  .qr-session-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.2rem 1.5rem;
+    display: flex; align-items: center; gap: 1rem; margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .session-info { flex: 1; min-width: 160px; }
+  .session-subject { font-size: 1rem; font-weight: 600; }
+  .session-meta { font-size: 12px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
+
+  .count-pill {
+    background: var(--primary-dim); border: 1px solid rgba(79,124,255,0.2);
+    border-radius: 999px; padding: 4px 14px;
+    font-size: 13px; font-weight: 600; color: var(--primary);
+    white-space: nowrap;
+  }
+
+  .qr-grid { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: start; }
+
+  .qr-box {
+    background: #fff; border-radius: var(--radius-lg);
+    padding: 14px; display: flex; flex-direction: column;
+    align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #qr-canvas-teacher { display: block; }
+
+  .qr-timer-bar {
+    width: 100%; height: 4px;
+    background: rgba(0,0,0,0.08); border-radius: 2px; overflow: hidden;
+  }
+  .qr-timer-fill {
+    height: 100%; border-radius: 2px;
+    background: #4f7cff;
+    transition: width 1s linear;
+  }
+  .qr-timer-label { font-size: 11px; color: #888; font-family: 'DM Mono', monospace; }
+
+  .qr-details { display: flex; flex-direction: column; gap: 12px; }
+  .info-row { display: flex; flex-direction: column; gap: 3px; }
+  .info-row .lbl { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; font-family: var(--mono); }
+  .info-row .val { font-size: 14px; color: var(--text); font-family: var(--mono); }
+
+  .security-notice {
+    background: var(--primary-dim); border: 1px solid rgba(79,124,255,0.15);
+    border-radius: var(--radius); padding: .8rem 1rem;
+    font-size: 12px; color: var(--primary);
+    display: flex; align-items: flex-start; gap: 8px; line-height: 1.5;
+  }
+  .security-notice .icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Attendance table */
+  .attendance-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .attendance-header h3 { font-size: .95rem; font-weight: 600; }
+  .export-btn {
+    background: none; border: 1px solid var(--border2); color: var(--text2);
+    padding: 5px 12px; border-radius: 8px; font-size: 11px;
+    cursor: pointer; font-family: var(--mono); transition: all .15s;
+  }
+  .export-btn:hover { border-color: var(--green); color: var(--green); }
+
+  .table-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--text3); font-family: var(--mono);
+    padding: 10px 16px; text-align: left;
+    border-bottom: 1px solid var(--border); font-weight: 500;
+  }
+  td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .no-records {
+    text-align: center; padding: 2.5rem; color: var(--text3); font-size: 13px;
+  }
+  .no-records .big { font-size: 1.8rem; margin-bottom: .5rem; }
+
+  /* ── STUDENT ─────────────────────────────────────────────────────── */
+  .student-form-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 20px;
+  }
+
+  .scanner-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .scanner-card-header {
+    padding: 1rem 1.5rem; border-bottom: 1px solid var(--border);
+    font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px;
+  }
+  .scanner-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%,100%{ opacity:1; transform:scale(1); } 50%{ opacity:.5; transform:scale(.8); } }
+
+  .video-wrapper {
+    position: relative; width: 100%; background: #000;
+    aspect-ratio: 4/3; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #scan-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scan-overlay {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center; pointer-events: none;
+  }
+  .scan-frame {
+    width: 200px; height: 200px; position: relative;
+  }
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame .c::before, .scan-frame .c::after {
+    content: ''; position: absolute; width: 28px; height: 28px; border-color: var(--primary); border-style: solid;
+  }
+  .scan-frame::before { top:0; left:0; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+  .scan-frame::after { top:0; right:0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+  .scan-frame .c::before { bottom:0; left:0; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+  .scan-frame .c::after { bottom:0; right:0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+  .scan-laser {
+    position: absolute; left: 10px; right: 10px; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    top: 0; animation: laser 2s ease-in-out infinite;
+  }
+  @keyframes laser { 0%,100%{ top:10px; opacity:1; } 50%{ top: 190px; opacity:.8; } }
+
+  .scanner-hint {
+    padding: .8rem 1.5rem; font-size: 12px; color: var(--text3);
+    border-top: 1px solid var(--border); text-align: center;
+  }
+
+  .result-card {
+    border-radius: var(--radius-lg); padding: 2rem; text-align: center;
+    border: 1px solid; display: none;
+  }
+  .result-card.success { background: var(--green-dim); border-color: rgba(45,212,160,.2); }
+  .result-card.error { background: var(--red-dim); border-color: rgba(255,92,108,.2); }
+  .result-card.warning { background: var(--amber-dim); border-color: rgba(245,166,35,.2); }
+  .result-icon { font-size: 2.8rem; margin-bottom: .8rem; }
+  .result-title { font-size: 1.1rem; font-weight: 600; margin-bottom: .4rem; }
+  .result-title.success { color: var(--green); }
+  .result-title.error { color: var(--red); }
+  .result-title.warning { color: var(--amber); }
+  .result-body { font-size: 13px; color: var(--text2); margin-bottom: 1.2rem; line-height: 1.6; }
+  .btn-scan-again {
+    padding: 9px 22px; border-radius: var(--radius);
+    border: none; font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: opacity .15s;
+  }
+  .btn-scan-again.success { background: var(--green); color: #0a1a15; }
+  .btn-scan-again.error { background: var(--red); color: #fff; }
+  .btn-scan-again.warning { background: var(--amber); color: #1a0f00; }
+  .btn-scan-again:hover { opacity: .85; }
+
+  /* Fullscreen QR option */
+  .fullscreen-qr {
+    position: fixed; inset: 0; z-index: 1000;
+    background: #fff;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px;
+  }
+  .fullscreen-qr.active { display: flex; }
+  .fullscreen-qr #qr-canvas-fullscreen { display: block; }
+  .fullscreen-qr .fs-info { text-align: center; color: #333; font-family: var(--mono); font-size: 13px; }
+  .fullscreen-qr .fs-meta { color: #666; font-size: 12px; margin-top: 4px; }
+  .fullscreen-qr .fs-timer { font-size: 11px; color: #4f7cff; margin-top: 4px; }
+  .close-fs {
+    position: absolute; top: 16px; right: 16px;
+    background: #f0f0f0; border: none; border-radius: 8px;
+    padding: 6px 14px; font-family: var(--font); font-size: 13px;
+    cursor: pointer; color: #333;
+  }
+  .fs-btn {
+    width: 100%; padding: 10px; border-radius: var(--radius);
+    background: transparent; border: 1px solid var(--border2); color: var(--text2);
+    font-family: var(--font); font-size: 12px; cursor: pointer;
+    transition: all .15s; margin-top: 8px; letter-spacing: .03em;
+  }
+  .fs-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* Animations */
+  @keyframes fadeUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
+  .fade-up { animation: fadeUp .35s ease forwards; }
+
+  @media (max-width: 600px) {
+    .role-cards { grid-template-columns: 1fr; }
+    .qr-grid { grid-template-columns: 1fr; }
+    .qr-box { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ LANDING ══════════════════ -->
+<section id="landing">
+  <div class="bg-grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="logo-mark">
+    <div class="logo-icon">⬡</div>
+    AttendIO
+  </div>
+  <h1 class="landing-title">Secure QR<br>Attendance</h1>
+  <p class="landing-sub">Time-locked QR codes that refresh every 10 seconds — students can't share what's already expired.</p>
+  <div class="role-cards">
+    <div class="role-card teacher" onclick="enterRole('teacher')">
+      <span class="role-icon">🖥️</span>
+      <div class="role-label">Teacher</div>
+      <div class="role-desc">Create sessions &amp; display QR</div>
+    </div>
+    <div class="role-card student" onclick="enterRole('student')">
+      <span class="role-icon">📱</span>
+      <div class="role-label">Student</div>
+      <div class="role-desc">Scan QR to mark attendance</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ TEACHER SHELL ══════════════════ -->
+<div id="teacher-shell" class="app-shell">
+  <div class="topbar">
+    <span class="topbar-logo">AttendIO</span>
+    <div class="topbar-sep"></div>
+    <span class="topbar-title" id="teacher-topbar-title">Teacher</span>
+    <span class="topbar-badge badge-teacher">TEACHER</span>
+    <button class="back-btn" onclick="goHome()">← Exit</button>
+  </div>
+  <div class="content">
+
+    <!-- SETUP PANEL -->
+    <div id="teacher-setup" class="panel active fade-up">
+      <div class="setup-card">
+        <h2>Start a new session</h2>
+        <div class="field">
+          <label>Subject / Course</label>
+          <input type="text" id="t-subject" placeholder="e.g. Mathematics 101" />
+        </div>
+        <div class="field">
+          <label>Your Name</label>
+          <input type="text" id="t-teacher" placeholder="e.g. Dr. Sharma" />
+        </div>
+        <button class="btn-primary" onclick="startSession()">Generate QR Session</button>
+      </div>
+    </div>
+
+    <!-- QR PANEL -->
+    <div id="teacher-qr" class="panel">
+      <div class="qr-session-bar fade-up">
+        <div class="session-info">
+          <div class="session-subject" id="display-subject">—</div>
+          <div class="session-meta" id="display-meta">—</div>
+        </div>
+        <div class="count-pill" id="present-count">0 present</div>
+      </div>
+
+      <div class="setup-card fade-up">
+        <div class="qr-grid">
+          <div class="qr-box">
+            <div id="qr-canvas-teacher"></div>
+            <div class="qr-timer-bar"><div class="qr-timer-fill" id="qr-fill"></div></div>
+            <div class="qr-timer-label" id="qr-label">Refreshes in 10s</div>
+          </div>
+          <div class="qr-details">
+            <div class="info-row">
+              <span class="lbl">Session Code</span>
+              <span class="val" id="display-code">—</span>
+            </div>
+            <div class="info-row">
+              <span class="lbl">Window</span>
+              <span class="val" id="display-window">—</span>
+            </div>
+            <div class="info-row">
+              <span class="lbl">Token</span>
+              <span class="val" id="display-token" style="font-size:11px; word-break:break-all; color:var(--text3);">—</span>
+            </div>
+            <div class="security-notice">
+              <span class="icon">🔒</span>
+              <span>Token changes every 10 s. Expired tokens are rejected — screenshots can't be shared.</span>
+            </div>
+            <button class="fs-btn" onclick="openFullscreen()">⛶ Fullscreen QR for projector</button>
+            <button class="btn-outline" onclick="endSession()">End Session</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="attendance-header fade-up">
+        <h3>Attendance</h3>
+        <button class="export-btn" onclick="exportCSV()">↓ Export CSV</button>
+      </div>
+      <div class="table-wrap fade-up">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Student ID</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="attendance-tbody">
+            <tr><td colspan="4"><div class="no-records"><div class="big">⏳</div>Waiting for students to scan…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ STUDENT SHELL ══════════════════ -->
+<div id="student-shell" class="app-shell">
+  <div class="topbar">
+    <span class="topbar-logo">AttendIO</span>
+    <div class="topbar-sep"></div>
+    <span class="topbar-title">Student</span>
+    <span class="topbar-badge badge-student">STUDENT</span>
+    <button class="back-btn" onclick="goHome(); stopCamera();">← Exit</button>
+  </div>
+  <div class="content">
+
+    <!-- FORM -->
+    <div class="student-form-card fade-up">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="field" style="margin:0">
+          <label>Your Name</label>
+          <input type="text" id="s-name" placeholder="Full name" />
+        </div>
+        <div class="field" style="margin:0">
+          <label>Student ID</label>
+          <input type="text" id="s-id" placeholder="Roll number" />
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULT (hidden initially) -->
+    <div class="result-card" id="result-card">
+      <div class="result-icon" id="result-icon"></div>
+      <div class="result-title" id="result-title"></div>
+      <div class="result-body" id="result-body"></div>
+      <button class="btn-scan-again" id="btn-scan-again" onclick="resetScan()">Scan Again</button>
+    </div>
+
+    <!-- SCANNER -->
+    <div class="scanner-card fade-up" id="scanner-card">
+      <div class="scanner-card-header">
+        <div class="scanner-dot"></div>
+        Camera active — point at teacher's QR code
+      </div>
+      <div class="video-wrapper">
+        <video id="scan-video" autoplay playsinline muted></video>
+        <div class="scan-overlay">
+          <div class="scan-frame">
+            <div class="c"></div>
+            <div class="scan-laser"></div>
+          </div>
+        </div>
+      </div>
+      <div class="scanner-hint">Fill in your details above, then scan the QR code on the board</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════ FULLSCREEN QR ══════════════════ -->
+<div class="fullscreen-qr" id="fullscreen-qr">
+  <button class="close-fs" onclick="closeFullscreen()">✕ Close</button>
+  <div id="qr-canvas-fullscreen"></div>
+  <div class="fs-info">
+    <div id="fs-subject">—</div>
+    <div class="fs-meta" id="fs-meta">—</div>
+    <div class="fs-timer" id="fs-timer">—</div>
+  </div>
+</div>
+
+<canvas id="scan-canvas" style="display:none"></canvas>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+const WINDOW_MS = 10000;
+let session = null;        // { code, subject, teacher, startTime }
+let attendance = [];       // [{ name, id, time }]
+let qrInstance = null;
+let qrFsInstance = null;
+let qrRefreshTimer = null;
+let countdownTimer = null;
+let scanAnimFrame = null;
+let videoStream = null;
+let scanActive = false;
+
+// ═══════════════════════════════════════════════════════
+//  CRYPTO / TOKEN
+// ═══════════════════════════════════════════════════════
+function currentWindow() { return Math.floor(Date.now() / WINDOW_MS); }
+function msUntilNext() { return WINDOW_MS - (Date.now() % WINDOW_MS); }
+
+async function sha256hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function makeToken(sessionCode, subject) {
+  const w = currentWindow();
+  const hash = await sha256hex(`${sessionCode}:${w}:attendio_salt_v1`);
+  const nonce = hash.slice(0, 16);
+  return `${sessionCode}|${subject}|${w * WINDOW_MS}|${nonce}`;
+}
+
+async function validateToken(raw) {
+  const parts = raw.split('|');
+  if (parts.length !== 4) return null;
+  const [code, subject, tsStr, nonce] = parts;
+  const ts = parseInt(tsStr);
+  if (isNaN(ts)) return null;
+  const scannedWindow = Math.floor(ts / WINDOW_MS);
+  const now = currentWindow();
+  if (scannedWindow < now - 1 || scannedWindow > now) return null; // expired or future
+  const expectedHash = await sha256hex(`${code}:${scannedWindow}:attendio_salt_v1`);
+  const expectedNonce = expectedHash.slice(0, 16);
+  if (nonce !== expectedNonce) return null;
+  return { code, subject };
+}
+
+// ═══════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════
+function enterRole(role) {
+  document.getElementById('landing').style.display = 'none';
+  document.getElementById(`${role}-shell`).classList.add('active');
+  if (role === 'student') startCamera();
+}
+
+function goHome() {
+  document.getElementById('landing').style.display = 'flex';
+  document.getElementById('teacher-shell').classList.remove('active');
+  document.getElementById('student-shell').classList.remove('active');
+  stopQrRefresh();
+}
+
+// ═══════════════════════════════════════════════════════
+//  TEACHER — SESSION
+// ═══════════════════════════════════════════════════════
+function uid(len=10) {
+  return Array.from(crypto.getRandomValues(new Uint8Array(len)))
+    .map(b => b.toString(36)).join('').toUpperCase().slice(0, len);
+}
+
+async function startSession() {
+  const subject = document.getElementById('t-subject').value.trim();
+  const teacher = document.getElementById('t-teacher').value.trim();
+  if (!subject || !teacher) { alert('Please fill in subject and your name.'); return; }
+
+  session = { code: uid(), subject, teacher, startTime: Date.now() };
+  attendance = [];
+
+  document.getElementById('display-subject').textContent = subject;
+  document.getElementById('display-meta').textContent = `${teacher} · ${new Date().toLocaleTimeString()}`;
+  document.getElementById('display-code').textContent = session.code;
+  document.getElementById('teacher-topbar-title').textContent = subject;
+
+  document.getElementById('teacher-setup').classList.remove('active');
+  document.getElementById('teacher-qr').classList.add('active');
+  updateAttendanceTable();
+  await renderQr();
+  startQrRefresh();
+}
+
+async function renderQr() {
+  if (!session) return;
+  const token = await makeToken(session.code, session.subject);
+
+  // Main QR
+  document.getElementById('qr-canvas-teacher').innerHTML = '';
+  new QRCode(document.getElementById('qr-canvas-teacher'), {
+    text: token, width: 200, height: 200,
+    colorDark: '#000000', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  // Fullscreen QR
+  document.getElementById('qr-canvas-fullscreen').innerHTML = '';
+  new QRCode(document.getElementById('qr-canvas-fullscreen'), {
+    text: token, width: 360, height: 360,
+    colorDark: '#000000', colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  const w = currentWindow();
+  document.getElementById('display-window').textContent = `#${w}`;
+  document.getElementById('display-token').textContent = token.slice(0, 40) + '…';
+  document.getElementById('fs-subject').textContent = session.subject;
+  document.getElementById('fs-meta').textContent = `${session.teacher} · Code: ${session.code}`;
+}
+
+function startQrRefresh() {
+  stopQrRefresh();
+  const tick = async () => {
+    const ms = msUntilNext();
+    const secs = Math.ceil(ms / 1000);
+    const pct = (ms / WINDOW_MS) * 100;
+    document.getElementById('qr-fill').style.width = pct + '%';
+    document.getElementById('qr-label').textContent = `Refreshes in ${secs}s`;
+    document.getElementById('fs-timer').textContent = `Refreshes in ${secs}s`;
+
+    if (secs <= 1) { await renderQr(); }
+  };
+
+  tick();
+  qrRefreshTimer = setInterval(tick, 500);
+}
+
+function stopQrRefresh() {
+  if (qrRefreshTimer) { clearInterval(qrRefreshTimer); qrRefreshTimer = null; }
+}
+
+function endSession() {
+  if (!confirm('End this session? Students can no longer mark attendance.')) return;
+  stopQrRefresh();
+  session = null;
+  document.getElementById('teacher-qr').classList.remove('active');
+  document.getElementById('teacher-setup').classList.add('active');
+  document.getElementById('t-subject').value = '';
+  document.getElementById('t-teacher').value = '';
+}
+
+// ═══════════════════════════════════════════════════════
+//  TEACHER — ATTENDANCE TABLE
+// ═══════════════════════════════════════════════════════
+function updateAttendanceTable() {
+  const tbody = document.getElementById('attendance-tbody');
+  document.getElementById('present-count').textContent = `${attendance.length} present`;
+
+  if (attendance.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="no-records"><div class="big">⏳</div>Waiting for students to scan…</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = attendance.map((r, i) => `
+    <tr>
+      <td style="color:var(--text3);font-family:var(--mono)">${i + 1}</td>
+      <td style="font-weight:500">${esc(r.name)}</td>
+      <td style="font-family:var(--mono);color:var(--text2)">${esc(r.id)}</td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--text3)">${r.time}</td>
+    </tr>`).join('');
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function exportCSV() {
+  if (!session || attendance.length === 0) { alert('No attendance records to export.'); return; }
+  const rows = [['#','Name','Student ID','Time']];
+  attendance.forEach((r, i) => rows.push([i+1, r.name, r.id, r.time]));
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `attendance_${session.subject.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════
+//  FULLSCREEN QR
+// ═══════════════════════════════════════════════════════
+function openFullscreen() { document.getElementById('fullscreen-qr').classList.add('active'); }
+function closeFullscreen() { document.getElementById('fullscreen-qr').classList.remove('active'); }
+
+// ═══════════════════════════════════════════════════════
+//  STUDENT — CAMERA
+// ═══════════════════════════════════════════════════════
+async function startCamera() {
+  try {
+    // Check if the API exists first
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Camera API not supported or not in a secure (HTTPS) context");
+    }
+
+    videoStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 } 
+      } 
+    });
+    
+    const video = document.getElementById('scan-video');
+    video.srcObject = videoStream;
+    
+    // Some browsers return a promise on play()
+    await video.play();
+    
+    scanActive = true;
+    scanLoop();
+  } catch(e) {
+    console.error("Camera Error: ", e);
+    document.getElementById('scanner-card').innerHTML =
+      `<div style="padding:2rem;text-align:center;color:var(--red)">
+        <div style="font-size:2rem;margin-bottom:.5rem">📷</div>
+        ${e.message}<br>
+        Please ensure you are using <b>HTTPS</b>.
+      </div>`;
+  }
+}
+
+function stopCamera() {
+  scanActive = false;
+  if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); videoStream = null; }
+  if (scanAnimFrame) { cancelAnimationFrame(scanAnimFrame); scanAnimFrame = null; }
+}
+
+function scanLoop() {
+  if (!scanActive) return;
+  const video = document.getElementById('scan-video');
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    const canvas = document.getElementById('scan-canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+      scanActive = false;
+      processStudentScan(code.data);
+      return;
+    }
+  }
+  scanAnimFrame = requestAnimationFrame(scanLoop);
+}
+
+async function processStudentScan(raw) {
+  const name = document.getElementById('s-name').value.trim();
+  const sid = document.getElementById('s-id').value.trim();
+
+  if (!name || !sid) {
+    showResult('error', '❌', 'Fill in your details first', 'Enter your name and student ID before scanning.', 'error');
+    return;
+  }
+
+  const validated = await validateToken(raw);
+  if (!validated) {
+    showResult('error', '⏱️', 'QR Code Expired', 'This QR code is no longer valid. Ask your teacher to show the screen again — it refreshes every 10 seconds.', 'error');
+    return;
+  }
+
+  // Find session via BroadcastChannel or localStorage
+  const stored = localStorage.getItem(`attendio_session_${validated.code}`);
+  if (!stored) {
+    showResult('error', '🔍', 'Session not found', `No active session found for code "${validated.code}". Make sure you are connected to the same device or network as the teacher.`, 'error');
+    return;
+  }
+
+  const sessionData = JSON.parse(stored);
+  const alreadyKey = `attendio_mark_${validated.code}_${name.toLowerCase()}`;
+  if (localStorage.getItem(alreadyKey)) {
+    showResult('warning', '⚠️', 'Already marked', `${name}, your attendance for "${sessionData.subject}" was already recorded.`, 'warning');
+    return;
+  }
+
+  // Mark
+  const record = { name, id: sid, time: new Date().toLocaleTimeString() };
+  const records = JSON.parse(localStorage.getItem(`attendio_records_${validated.code}`) || '[]');
+  records.push(record);
+  localStorage.setItem(`attendio_records_${validated.code}`, JSON.stringify(records));
+  localStorage.setItem(alreadyKey, '1');
+
+  // Update teacher view if same browser
+  if (session && session.code === validated.code) {
+    attendance = records;
+    updateAttendanceTable();
+  }
+
+  showResult('success', '✅', 'Attendance Marked!', `Hi ${name}! Your attendance for "${sessionData.subject}" (${sessionData.teacher}) has been successfully recorded.`, 'success');
+}
+
+function showResult(type, icon, title, body, btnClass) {
+  document.getElementById('scanner-card').style.display = 'none';
+  const card = document.getElementById('result-card');
+  card.className = `result-card ${type}`;
+  card.style.display = 'block';
+  document.getElementById('result-icon').textContent = icon;
+  document.getElementById('result-title').className = `result-title ${type}`;
+  document.getElementById('result-title').textContent = title;
+  document.getElementById('result-body').textContent = body;
+  document.getElementById('btn-scan-again').className = `btn-scan-again ${btnClass}`;
+  document.getElementById('btn-scan-again').textContent = type === 'success' ? 'Mark Another' : 'Try Again';
+}
+
+function resetScan() {
+  document.getElementById('result-card').style.display = 'none';
+  document.getElementById('scanner-card').style.display = 'block';
+  scanActive = true;
+  scanLoop();
+}
+
+// ═══════════════════════════════════════════════════════
+//  STORAGE SYNC (Teacher saves session to localStorage
+//  so Student on same browser can validate)
+// ═══════════════════════════════════════════════════════
+const origStartSession = startSession;
+async function startSessionHook() {
+  await origStartSession();
+}
+
+// Patch startSession to also save session to localStorage
+const _origStart = startSession;
+window.startSession = async function() {
+  const subject = document.getElementById('t-subject').value.trim();
+  const teacher = document.getElementById('t-teacher').value.trim();
+  if (!subject || !teacher) { alert('Please fill in subject and your name.'); return; }
+
+  session = { code: uid(), subject, teacher, startTime: Date.now() };
+  attendance = [];
+
+  // Persist session
+  localStorage.setItem(`attendio_session_${session.code}`, JSON.stringify({ subject, teacher }));
+
+  document.getElementById('display-subject').textContent = subject;
+  document.getElementById('display-meta').textContent = `${teacher} · ${new Date().toLocaleTimeString()}`;
+  document.getElementById('display-code').textContent = session.code;
+  document.getElementById('teacher-topbar-title').textContent = subject;
+
+  document.getElementById('teacher-setup').classList.remove('active');
+  document.getElementById('teacher-qr').classList.add('active');
+  updateAttendanceTable();
+  await renderQr();
+  startQrRefresh();
+
+  // Poll localStorage for new records
+  setInterval(() => {
+    if (!session) return;
+    const records = JSON.parse(localStorage.getItem(`attendio_records_${session.code}`) || '[]');
+    if (records.length !== attendance.length) {
+      attendance = records;
+      updateAttendanceTable();
+    }
+  }, 1000);
+};
+
+// Also patch endSession to clean up localStorage
+const _origEnd = window.endSession;
+window.endSession = function() {
+  if (!confirm('End this session? Students can no longer mark attendance.')) return;
+  stopQrRefresh();
+  if (session) localStorage.removeItem(`attendio_session_${session.code}`);
+  session = null;
+  document.getElementById('teacher-qr').classList.remove('active');
+  document.getElementById('teacher-setup').classList.add('active');
+  document.getElementById('t-subject').value = '';
+  document.getElementById('t-teacher').value = '';
+};
+</script>
+</body>
+</html>
